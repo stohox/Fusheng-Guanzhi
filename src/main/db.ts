@@ -24,8 +24,29 @@ export async function initDb(): Promise<void> {
   const SQL = await initSqlJs({
     locateFile: (f) => path.join(path.dirname(require.resolve('sql.js')), f)
   })
-  const existing = fs.existsSync(dbPath()) ? fs.readFileSync(dbPath()) : null
-  db = existing ? new SQL.Database(existing) : new SQL.Database()
+  const p = dbPath()
+  const existing = fs.existsSync(p) ? fs.readFileSync(p) : null
+  if (existing) {
+    try {
+      db = new SQL.Database(existing)
+    } catch {
+      // 主库损坏（历史上非原子写中断等）：损坏文件改名保留，尝试从 .bak 恢复
+      console.warn('[db] reader.db 损坏，尝试从 reader.db.bak 恢复')
+      let recovered: Database | null = null
+      try {
+        fs.copyFileSync(p, p + '.corrupt.' + Date.now())
+        if (fs.existsSync(p + '.bak')) {
+          recovered = new SQL.Database(fs.readFileSync(p + '.bak'))
+          fs.copyFileSync(p + '.bak', p)
+        }
+      } catch {
+        recovered = null
+      }
+      db = recovered ?? new SQL.Database()
+    }
+  } else {
+    db = new SQL.Database()
+  }
   db.run(`
     PRAGMA foreign_keys = ON;
     CREATE TABLE IF NOT EXISTS books (
@@ -103,8 +124,18 @@ export function persistNow(): void {
     clearTimeout(saveTimer)
     saveTimer = null
   }
-  const data = db.export()
-  fs.writeFileSync(dbPath(), Buffer.from(data))
+  const data = Buffer.from(db.export())
+  const p = dbPath()
+  const tmp = p + '.tmp'
+  // 原子写：先落临时文件，保留上一份为 .bak，再 rename 替换。
+  // 直接覆盖写一旦中途崩溃/断电会产生半截库文件，导致整库无法打开。
+  fs.writeFileSync(tmp, data)
+  try {
+    fs.copyFileSync(p, p + '.bak')
+  } catch {
+    /* 首次运行尚无主库，跳过备份 */
+  }
+  fs.renameSync(tmp, p)
 }
 
 // ---------------- 通用查询辅助 ----------------
@@ -208,19 +239,33 @@ export const books = {
     must().run(`UPDATE books SET ${sets.join(',')} WHERE id=?`, params as never)
     persist()
   },
+  // 回收站保留 30 天：仅物理清除删除超过 30 天的条目（与 UI 承诺一致）
   purgeDeleted(): void {
-    const rows = all(`SELECT id FROM books WHERE deleted_at IS NOT NULL`, [], (r) => n(r.id))
+    const cutoff = Date.now() - 30 * 86400_000
+    const rows = all(
+      `SELECT id FROM books WHERE deleted_at IS NOT NULL AND deleted_at <= ?`,
+      [cutoff],
+      (r) => n(r.id)
+    )
     for (const id of rows) books.purge(id)
   },
   purge(id: number): void {
-    must().run(`DELETE FROM chapters WHERE book_id=?`, [id] as never)
-    must().run(`DELETE FROM book_library WHERE book_id=?`, [id] as never)
-    must().run(`DELETE FROM book_tag WHERE book_id=?`, [id] as never)
-    must().run(`DELETE FROM bookmarks WHERE book_id=?`, [id] as never)
-    must().run(`DELETE FROM annotations WHERE book_id=?`, [id] as never)
-    must().run(`DELETE FROM progress WHERE book_id=?`, [id] as never)
-    must().run(`DELETE FROM search_fts WHERE book_id=?`, [id] as never)
-    must().run(`DELETE FROM books WHERE id=?`, [id] as never)
+    // 事务包裹：任一 DELETE 失败时整体回滚，不留孤儿数据
+    must().run('BEGIN TRANSACTION')
+    try {
+      must().run(`DELETE FROM chapters WHERE book_id=?`, [id] as never)
+      must().run(`DELETE FROM book_library WHERE book_id=?`, [id] as never)
+      must().run(`DELETE FROM book_tag WHERE book_id=?`, [id] as never)
+      must().run(`DELETE FROM bookmarks WHERE book_id=?`, [id] as never)
+      must().run(`DELETE FROM annotations WHERE book_id=?`, [id] as never)
+      must().run(`DELETE FROM progress WHERE book_id=?`, [id] as never)
+      must().run(`DELETE FROM search_fts WHERE book_id=?`, [id] as never)
+      must().run(`DELETE FROM books WHERE id=?`, [id] as never)
+      must().run('COMMIT')
+    } catch (e) {
+      must().run('ROLLBACK')
+      throw e
+    }
     persistNow()
   }
 }

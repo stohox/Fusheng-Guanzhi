@@ -126,6 +126,14 @@ export function parseEpub(
   fallbackTitle: string
 ): { title: string; author: string; language: string; chapters: ParsedChapter[]; integrity: Integrity; missing: boolean } {
   const files = unzipSync(new Uint8Array(buf))
+  // 解压膨胀检查：MAX_FILE_BYTES 只限压缩后体积，zip bomb 需按解压后总量拦截
+  let expanded = 0
+  for (const f of Object.values(files)) {
+    expanded += f.length
+    if (expanded > MAX_EXPANDED_BYTES) {
+      throw new Error(`EPUB 解压后超过 ${(MAX_EXPANDED_BYTES / 1048576).toFixed(0)} MB 限制（解压膨胀异常，已拒绝导入）`)
+    }
+  }
   const dec = (f: Uint8Array): string => decodeText(Buffer.from(f))
   const containerXml = files['META-INF/container.xml'] ? dec(files['META-INF/container.xml']) : ''
   const opfMatch = containerXml.match(/full-path="([^"]+)"/i)

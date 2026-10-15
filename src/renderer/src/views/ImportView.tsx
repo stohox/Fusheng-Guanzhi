@@ -101,6 +101,7 @@ function PreviewForm({ task, onDone }: { task: ImportTask; onDone: () => void })
 
   const confirm = async (): Promise<void> => {
     if (dupAction === 'open' && p.duplicateOf.length) {
+      await window.reader.cancelImport(task.id, false) // 释放主进程暂存的解析 Buffer，避免泄漏
       s.openBook(p.duplicateOf[0].id)
       onDone()
       return

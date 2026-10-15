@@ -452,8 +452,9 @@ if (!gotTheLock) {
   initDb().then(() => {
     registerDecryptor((payload) => decryptWithKey(payload, getMasterKey()))
     registerIpc()
-    // 回收站 30 天清理
+    // 回收站 30 天清理：启动时执行一次，此后每 24 小时兜底（长期挂机也能清）
     books.purgeDeleted()
+    setInterval(() => books.purgeDeleted(), 24 * 3600 * 1000).unref()
     createWindow()
     if (!win) return
     initPrivacy((s) => {

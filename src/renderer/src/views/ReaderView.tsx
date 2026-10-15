@@ -267,14 +267,18 @@ export default function ReaderView({ bookId }: { bookId: number }): ReactNode {
     const text = sel.toString().trim()
     if (!text) return
     const para = chapter?.paragraphs[pidx] ?? ''
-    const startOffset = Math.max(0, para.indexOf(sel.toString()))
+    // 跨段选择时 indexOf 找不到整串（含换行）会返回 -1，曾把偏移错误记为 0+len；
+    // 找不到时保守锚定整段（0 ~ 段长），不产生错误区间。
+    const found = para.indexOf(sel.toString())
+    const startOffset = Math.max(0, found)
+    const endOffset = found >= 0 ? found + text.length : para.length
     const rect = sel.getRangeAt(0).getBoundingClientRect()
     setToolbar({ x: rect.left + rect.width / 2, y: rect.top - 8 })
     setSelection({
       chapterIdx,
       paraIdx: pidx,
       startOffset,
-      endOffset: startOffset + text.length,
+      endOffset,
       text,
       prevContext: chapter?.paragraphs[pidx - 1] ?? '',
       nextContext: chapter?.paragraphs[pidx + 1] ?? ''
