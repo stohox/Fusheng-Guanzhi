@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, ReactNode, useCallback } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, ReactNode, useCallback, useMemo } from 'react'
 import type { AppSettings, Book, Library, Tag } from '../../shared/types'
 
 export type View = 'continue' | 'library' | 'import' | 'settings' | 'reader'
@@ -132,34 +132,43 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactNode 
 
   const toggleQuick = useCallback(() => setQuickOpen((v) => !v), [])
 
-  const store: Store = {
-    settings,
-    privacyState,
-    view,
-    setView,
-    openBook,
-    currentBookId,
-    currentAnchor,
-    books,
-    libraries,
-    tags,
-    refreshBooks,
-    refreshLibraries,
-    updateSettings,
-    theme,
-    setTheme,
-    stealth: settings?.stealthMode ?? false,
-    toggleStealth,
-    focusOpacity: settings?.focusOpacity ?? 0.9,
-    focusAlwaysOnTop: settings?.focusAlwaysOnTop ?? true,
-    toggleAlwaysOnTop,
-    focusTextColor: settings?.focusTextColor ?? 'light',
-    focusTextBrightness: settings?.focusTextBrightness ?? 0.96,
-    toggleTextColor,
-    quickOpen,
-    setQuickOpen,
-    toggleQuick
-  }
+  // memo 化：此前每次渲染都重建 store 对象 → 所有 useStore 消费者全量重渲染；
+  // 与 ReaderView 的段落追踪叠加会放大滚动链路的开销。
+  const store: Store = useMemo(
+    () => ({
+      settings,
+      privacyState,
+      view,
+      setView,
+      openBook,
+      currentBookId,
+      currentAnchor,
+      books,
+      libraries,
+      tags,
+      refreshBooks,
+      refreshLibraries,
+      updateSettings,
+      theme,
+      setTheme,
+      stealth: settings?.stealthMode ?? false,
+      toggleStealth,
+      focusOpacity: settings?.focusOpacity ?? 0.9,
+      focusAlwaysOnTop: settings?.focusAlwaysOnTop ?? true,
+      toggleAlwaysOnTop,
+      focusTextColor: settings?.focusTextColor ?? 'light',
+      focusTextBrightness: settings?.focusTextBrightness ?? 0.96,
+      toggleTextColor,
+      quickOpen,
+      setQuickOpen,
+      toggleQuick
+    }),
+    [
+      settings, privacyState, view, currentBookId, currentAnchor, books, libraries, tags,
+      theme, quickOpen, refreshBooks, refreshLibraries, openBook, updateSettings,
+      toggleStealth, toggleAlwaysOnTop, toggleTextColor, toggleQuick
+    ]
+  )
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>
 }

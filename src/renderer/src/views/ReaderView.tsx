@@ -236,18 +236,30 @@ export default function ReaderView({ bookId }: { bookId: number }): ReactNode {
     return (): void => clearInterval(timer)
   }, [bookId, book, meta, chapter])
 
-  const onScroll = useCallback((): void => {
-    if (!bodyRef.current || !chapter) return
-    const els = bodyRef.current.querySelectorAll('[data-pidx]')
-    const top = bodyRef.current.getBoundingClientRect().top
-    let cur = 0
-    els.forEach((el) => {
-      const r = el.getBoundingClientRect()
-      if (r.top - top <= 40) cur = Number((el as HTMLElement).dataset.pidx ?? 0)
-    })
-    setParaIdx(cur)
-    const text = chapter.paragraphs[cur] ?? ''
-    saveRef.current = { chapter: chapterIdx, para: cur, context: text.slice(0, 24) }
+  // 追踪可见段落：IntersectionObserver 增量回调，替代原 onScroll 里
+  // 每次滚动 querySelectorAll 全量遍历 + 逐段 getBoundingClientRect（大章节掉帧根因）。
+  // 段落变化时才 setParaIdx（React 同值 bail out 兜底）并同步 5 秒保存所需的锚点。
+  useEffect(() => {
+    if (!chapter || !bodyRef.current) return
+    const root = bodyRef.current
+    const io = new IntersectionObserver(
+      (entries) => {
+        let best: { pidx: number; top: number } | null = null
+        for (const e of entries) {
+          if (!e.isIntersecting) continue
+          const pidx = Number((e.target as HTMLElement).dataset.pidx ?? 0)
+          if (best === null || e.boundingClientRect.top < best.top) best = { pidx, top: e.boundingClientRect.top }
+        }
+        if (best) {
+          setParaIdx(best.pidx)
+          const text = chapter.paragraphs[best.pidx] ?? ''
+          saveRef.current = { chapter: chapterIdx, para: best.pidx, context: text.slice(0, 24) }
+        }
+      },
+      { root, threshold: 0 }
+    )
+    root.querySelectorAll('[data-pidx]').forEach((el) => io.observe(el))
+    return () => io.disconnect()
   }, [chapter, chapterIdx])
 
   // 选区 → 浮动工具条
@@ -371,7 +383,7 @@ export default function ReaderView({ bookId }: { bookId: number }): ReactNode {
       </div>
 
       <div className="reader-main">
-        <div className="reader-body" ref={bodyRef} onScroll={onScroll} onMouseUp={onMouseUp}>
+        <div className="reader-body" ref={bodyRef} onMouseUp={onMouseUp}>
           {chapter?.error === 'content-unreadable' ? (
             <div className="empty-state">正文无法解密读取（PIN 曾被重置，或本机安全存储环境变化）。可删除该书并从源文件重新导入。</div>
           ) : chapter ? (
