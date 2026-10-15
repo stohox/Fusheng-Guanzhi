@@ -4,7 +4,7 @@ import type { AppSettings, Book, Library, Tag } from '../../shared/types'
 export type View = 'continue' | 'library' | 'import' | 'settings' | 'reader'
 
 interface Store {
-  settings: (AppSettings & { hasPin?: boolean }) | null
+  settings: (AppSettings & { hasPin?: boolean; secureStorage?: boolean }) | null
   privacyState: string
   view: View
   setView: (v: View) => void
@@ -36,7 +36,7 @@ const Ctx = createContext<Store>(null as never)
 export const useStore = (): Store => useContext(Ctx)
 
 export function StoreProvider({ children }: { children: ReactNode }): ReactNode {
-  const [settings, setSettings] = useState<AppSettings & { hasPin?: boolean } | null>(null)
+  const [settings, setSettings] = useState<AppSettings & { hasPin?: boolean; secureStorage?: boolean } | null>(null)
   const [privacyState, setPrivacyState] = useState('reading')
   const [view, setView] = useState<View>('continue')
   const [currentBookId, setCurrentBookId] = useState<number | null>(null)

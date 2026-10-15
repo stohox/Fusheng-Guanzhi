@@ -180,7 +180,12 @@ function GlobalSearch(): ReactNode {
       <input
         value={q}
         placeholder={s.stealth ? '搜索标题或内容' : '搜索书名、作者或已缓存正文'}
-        onChange={(e) => setQ(e.target.value)}
+        onChange={(e) => {
+          setQ(e.target.value)
+          // 换搜索词时清掉旧结果，避免显示过期内容
+          setHits([])
+          setOpen(false)
+        }}
         onKeyDown={(e) => e.key === 'Enter' && doSearch()}
       />
       {open && (
@@ -188,7 +193,7 @@ function GlobalSearch(): ReactNode {
           {(hits as Array<{ bookId: number; bookTitle: string; chapterIdx: number; paraIdx: number; snippet: string }>).map(
             (h, i) => (
               <div
-                key={i}
+                key={`${h.bookId}-${h.chapterIdx}-${h.paraIdx}-${i}`}
                 className="hit"
                 onClick={() => {
                   s.openBook(h.bookId, { chapterIdx: h.chapterIdx, paraIdx: h.paraIdx })

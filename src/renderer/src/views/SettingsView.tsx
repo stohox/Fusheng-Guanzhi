@@ -60,6 +60,12 @@ export default function SettingsView(): ReactNode {
         <p className="dim small">
           隐私模式用于减少旁观者从应用界面看到阅读内容的机会，不能消除系统记录或既有截屏。以下为可验证的“快速隐藏阅读内容”能力。
         </p>
+        <p className="dim small">
+          本机加密保护：
+          {st.secureStorage
+            ? '✅ 正文密钥与 AI 密钥均由系统凭据（Windows DPAPI）保护'
+            : '⚠️ 当前系统不支持安全存储，密钥退化为受限文件保存，静态加密强度降低'}
+        </p>
         <div className="form-grid">
           <label>
             快捷隐藏键

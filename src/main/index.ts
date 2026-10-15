@@ -15,9 +15,10 @@ import {
   rules,
   aiCache,
   search,
-  trash
+  trash,
+  booksRelations
 } from './db'
-import { getMasterKey, decryptWithKey, registerDecryptor, hasPin } from './crypto'
+import { getMasterKey, decryptWithKey, registerDecryptor, hasPin, isStorageProtected } from './crypto'
 import { loadSettings, saveSettings, setApiKey, getApiKey } from './settings'
 import * as importer from './importer'
 import { runAi, cancelAi, cancelAllAi } from './ai'
@@ -171,7 +172,7 @@ function registerIpc(): void {
   // --- 设置 ---
   ipcMain.handle('settings:get', () => {
     const s = loadSettings()
-    return { ...s, aiHasKey: !!getApiKey(), hasPin: hasPin() }
+    return { ...s, aiHasKey: !!getApiKey(), hasPin: hasPin(), secureStorage: isStorageProtected() }
   })
   ipcMain.handle('settings:set', (_e, patch: Record<string, unknown>) => {
     const before = loadSettings()
@@ -280,6 +281,7 @@ function registerIpc(): void {
     try {
       paras = JSON.parse(ch.encrypted ? decryptWithKey(ch.raw, getMasterKey()) : ch.raw)
     } catch {
+      // 解密失败可能因 PIN 重置，也可能因 DPAPI/安全存储环境变化（换机/系统变更），两者都提示
       return { ...ch, paragraphs: [], error: 'content-unreadable' }
     }
     return { ...ch, paragraphs: paras }
@@ -299,6 +301,8 @@ function registerIpc(): void {
   ipcMain.handle('tags:list', () => tags.list())
   ipcMain.handle('relations:librariesOf', (_e, bookId: number) => relations.librariesOf(bookId))
   ipcMain.handle('relations:tagsOf', (_e, bookId: number) => relations.tagsOf(bookId))
+  // 批量关系：书库页一次拉全量映射，替代逐书 2 次 IPC 的串行往返
+  ipcMain.handle('relations:bulk', () => booksRelations())
   ipcMain.handle('relations:setLibraries', (_e, bookId: number, ids: number[]) => {
     relations.setLibraries(bookId, ids)
     const b = books.get(bookId)

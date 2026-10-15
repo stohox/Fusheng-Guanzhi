@@ -34,6 +34,11 @@ export function getMasterKey(): Buffer {
   return key
 }
 
+/** 平台安全存储（Windows DPAPI）是否可用，用于设置页展示当前保护级别。 */
+export function isStorageProtected(): boolean {
+  return safeStorage.isEncryptionAvailable()
+}
+
 export function encryptText(plain: string, key: Buffer): string {
   const iv = crypto.randomBytes(12)
   const c = crypto.createCipheriv('aes-256-gcm', key, iv)

@@ -14,11 +14,16 @@ export default function LibraryView(): ReactNode {
   const [showRules, setShowRules] = useState(false)
 
   useEffect(() => {
-    s.books.forEach(async (b) => {
-      const l = await window.reader.librariesOf(b.id)
-      const t = await window.reader.tagsOf(b.id)
-      setBookLibs((cur) => ({ ...cur, [b.id]: l as never }))
-      setBookTags((cur) => ({ ...cur, [b.id]: (t as Array<{ name: string }>).map((x) => x.name) }))
+    // 一次批量拉全量映射，替代逐书 2 次 IPC 的串行往返（N 本书 2N 次 → 1 次）
+    window.reader.booksRelations().then((m) => {
+      const l: Record<number, number[]> = {}
+      const t: Record<number, string[]> = {}
+      for (const [id, v] of Object.entries(m)) {
+        l[Number(id)] = v.libraries
+        t[Number(id)] = v.tags
+      }
+      setBookLibs(l)
+      setBookTags(t)
     })
   }, [s.books])
 

@@ -373,7 +373,7 @@ export default function ReaderView({ bookId }: { bookId: number }): ReactNode {
       <div className="reader-main">
         <div className="reader-body" ref={bodyRef} onScroll={onScroll} onMouseUp={onMouseUp}>
           {chapter?.error === 'content-unreadable' ? (
-            <div className="empty-state">正文无法解密读取（PIN 曾被重置）。可删除该书并从源文件重新导入。</div>
+            <div className="empty-state">正文无法解密读取（PIN 曾被重置，或本机安全存储环境变化）。可删除该书并从源文件重新导入。</div>
           ) : chapter ? (
             <>
               {!stealth && <h3 className="chapter-title">{chapter.title}</h3>}

@@ -8,7 +8,8 @@ import type {
 
 const api = {
   // 设置
-  getSettings: (): Promise<AppSettings & { hasPin: boolean }> => ipcRenderer.invoke('settings:get'),
+  getSettings: (): Promise<AppSettings & { hasPin: boolean; secureStorage: boolean }> =>
+    ipcRenderer.invoke('settings:get'),
   setSettings: (patch: Partial<AppSettings>): Promise<{ settings: AppSettings; shortcutConflict: boolean }> =>
     ipcRenderer.invoke('settings:set', patch),
   setApiKey: (key: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('settings:setApiKey', key),
@@ -54,6 +55,8 @@ const api = {
   listTags: () => ipcRenderer.invoke('tags:list'),
   librariesOf: (bookId: number) => ipcRenderer.invoke('relations:librariesOf', bookId),
   tagsOf: (bookId: number) => ipcRenderer.invoke('relations:tagsOf', bookId),
+  booksRelations: (): Promise<Record<number, { libraries: number[]; tags: string[] }>> =>
+    ipcRenderer.invoke('relations:bulk'),
   setLibraries: (bookId: number, ids: number[]) => ipcRenderer.invoke('relations:setLibraries', bookId, ids),
   setTags: (bookId: number, names: string[]) => ipcRenderer.invoke('relations:setTags', bookId, names),
 

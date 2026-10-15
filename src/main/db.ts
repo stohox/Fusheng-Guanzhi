@@ -579,7 +579,8 @@ export const aiCache = {
 // ---------------- 搜索 ----------------
 export function search(query: string, bookId?: number): SearchHit[] {
   if (!query.trim()) return []
-  const like = `%${query.replace(/[%_]/g, (m) => '\\' + m)}%`
+  // 注意：反斜杠本身也要转义，否则搜索词含 \ 时在 ESCAPE '\' 语义下结果不准
+  const like = `%${query.replace(/[\\%_]/g, (m) => '\\' + m)}%`
   if (bookId) {
     return all(
       `SELECT f.book_id,b.title AS btitle,f.chapter_idx,f.para_idx,f.text FROM search_fts f
@@ -610,6 +611,29 @@ export function search(query: string, bookId?: number): SearchHit[] {
     })
   )
   return [...meta, ...full]
+}
+
+// ---------------- 批量关系查询 ----------------
+// 一次返回全部（未删除）书籍的书库/标签映射，取代渲染层 N 本书串行 2N 次 IPC 往返
+export function booksRelations(): Record<number, { libraries: number[]; tags: string[] }> {
+  const out: Record<number, { libraries: number[]; tags: string[] }> = {}
+  for (const b of books.list()) out[b.id] = { libraries: [], tags: [] }
+  const libRows = all(
+    `SELECT bl.book_id AS bid, bl.library_id AS lid FROM book_library bl
+     JOIN books b ON b.id=bl.book_id WHERE b.deleted_at IS NULL`,
+    [],
+    (r) => ({ bid: n(r.bid), lid: n(r.lid) })
+  )
+  for (const r of libRows) out[r.bid]?.libraries.push(r.lid)
+  const tagRows = all(
+    `SELECT bt.book_id AS bid, t.name AS name FROM book_tag bt
+     JOIN tags t ON t.id=bt.tag_id JOIN books b ON b.id=bt.book_id
+     WHERE b.deleted_at IS NULL ORDER BY t.name`,
+    [],
+    (r) => ({ bid: n(r.bid), name: s(r.name) })
+  )
+  for (const r of tagRows) out[r.bid]?.tags.push(r.name)
+  return out
 }
 
 // ---------------- 回收站 ----------------

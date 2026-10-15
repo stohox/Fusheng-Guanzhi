@@ -52,10 +52,30 @@ export function hideToTray(win: BrowserWindow): void {
   if (tray) tray.displayBalloon({ title: '已隐藏', content: '点击托盘图标可恢复阅读' })
 }
 
+// ---------------- PIN 防爆破 ----------------
+// 4 位数字 PIN 组合空间只有 1 万，本地攻击者可在数分钟内暴力尝试。
+// 这里做失败计数 + 指数退避：第 5 次起锁定 30s，之后每次翻倍，上限 10 分钟。
+let pinFails = 0
+let pinLockUntil = 0
+
 export function revealWindow(win: BrowserWindow, pin: string): { ok: boolean; error?: string } {
   if (state === 'reading') return { ok: true }
+  const now = Date.now()
+  if (now < pinLockUntil) {
+    return { ok: false, error: `尝试过于频繁，请 ${Math.ceil((pinLockUntil - now) / 1000)} 秒后重试` }
+  }
   if (hasPin()) {
-    if (!verifyPin(pin)) return { ok: false, error: 'PIN 不正确' }
+    if (!verifyPin(pin)) {
+      pinFails++
+      if (pinFails >= 5) {
+        const delay = Math.min(30_000 * 2 ** (pinFails - 5), 600_000)
+        pinLockUntil = now + delay
+        return { ok: false, error: `PIN 已连续错误 ${pinFails} 次，请 ${Math.round(delay / 1000)} 秒后重试` }
+      }
+      return { ok: false, error: `PIN 不正确（已失败 ${pinFails} 次）` }
+    }
+    pinFails = 0
+    pinLockUntil = 0
   }
   transition('reading')
   if (win.isDestroyed()) return { ok: true }
