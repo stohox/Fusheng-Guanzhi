@@ -1,6 +1,6 @@
 {
   "name": "privacy-reader",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "浮生观止 - 多端隐私阅读应用 Windows 版（本地优先、可隐藏、古籍/英语选段辅助）",
   "main": "./out/main/index.js",
   "author": "leo",

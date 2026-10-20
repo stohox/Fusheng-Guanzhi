@@ -48,6 +48,8 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactNode 
   const [tags, setTags] = useState<Tag[]>([])
   const [theme, setTheme] = useState('light')
   const [quickOpen, setQuickOpen] = useState(false)
+  const startupRef = useRef(false)
+  const booksLoadedRef = useRef(false)
 
   const loadSettings = useCallback(async () => {
     const s = await window.reader.getSettings()
@@ -85,6 +87,7 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactNode 
   const refreshBooks = useCallback(async () => {
     setBooks(await window.reader.listBooks())
     setTags(await window.reader.listTags())
+    booksLoadedRef.current = true
   }, [])
   const refreshLibraries = useCallback(async () => {
     setLibraries(await window.reader.listLibraries())
@@ -95,12 +98,43 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactNode 
     refreshLibraries()
   }, [refreshBooks, refreshLibraries])
 
+  // 启动续读：设置与书目都加载完成后，若上次读的书仍存在，则直接回到该书面板。
+  // 校验存在性可避免书被删除后卡在「载入中…」。
+  useEffect(() => {
+    if (startupRef.current || !settings || !booksLoadedRef.current) return
+    startupRef.current = true
+    const id = settings.lastBookId
+    if (id && books.some((b) => b.id === id)) {
+      setCurrentBookId(id)
+      setView('reader')
+    }
+  }, [settings, books])
+
   const openBook = useCallback((id: number, anchor?: { chapterIdx: number; paraIdx: number }) => {
     setCurrentBookId(id)
     setCurrentAnchor(anchor ?? null)
     setNavSeq((n) => n + 1)
     setView('reader')
+    // 记住这本为「上次阅读」，重启后自动回到此处（fire-and-forget，不打断打开动画）
+    void window.reader.setSettings({ lastBookId: id })
   }, [])
+
+  // 托盘菜单指令：还原专注模式 / 书籍切换 / 设置（主进程 → 渲染进程）
+  useEffect(() => {
+    return window.reader.on('tray:command', (payload) => {
+      const cmd = payload as { type?: string; bookId?: number }
+      if (!cmd || typeof cmd.type !== 'string') return
+      if (cmd.type === 'settings') {
+        setView('settings')
+      } else if (cmd.type === 'open' && typeof cmd.bookId === 'number') {
+        openBook(cmd.bookId)
+      } else if (cmd.type === 'focus') {
+        const id = typeof cmd.bookId === 'number' ? cmd.bookId : currentBookId ?? settings?.lastBookId ?? null
+        if (id) openBook(id)
+        if (!settings?.stealthMode) void window.reader.setSettings({ stealthMode: true }).then(loadSettings)
+      }
+    })
+  }, [openBook, currentBookId, settings, loadSettings])
 
   const updateSettings = useCallback(
     async (patch: Partial<AppSettings>) => {

@@ -2,6 +2,7 @@ import { globalShortcut, BrowserWindow, Tray, Menu, nativeImage, app } from 'ele
 import path from 'path'
 import { loadSettings, saveSettings } from './settings'
 import { cancelAllAi } from './ai'
+import { progress } from './db'
 import { hasPin, verifyPin, setPin as savePin, resetPin as clearPin } from './crypto'
 
 export type PrivacyState = 'reading' | 'neutral' | 'locked'
@@ -164,18 +165,53 @@ export function createTray(win: BrowserWindow, onShow: () => void): void {
   }
   tray = new Tray(img)
   tray.setToolTip(loadSettings().neutralTitle || '阅读器') // 通用文案，不含书名
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
+
+  const send = (cmd: { type: string; bookId?: number }): void => {
+    if (!win.isDestroyed()) win.webContents.send('tray:command', cmd)
+  }
+
+  // 构建托盘右键菜单：显示 / 还原专注模式 / 书籍切换（最近阅读）/ 设置 / 退出。
+  // 书籍切换列表实时取最近的阅读进度，右键弹出前重建，保证切换后菜单跟得上。
+  const buildMenu = (): Menu => {
+    const s = loadSettings()
+    const recent = progress.recent(8)
+    const bookItems: Electron.MenuItemConstructorOptions[] = recent.length
+      ? recent.map((r) => {
+          const t = r.book.title ?? ''
+          return {
+            label: t.length > 30 ? `${t.slice(0, 30)}…` : t,
+            click: () => {
+              onShow()
+              send({ type: 'open', bookId: r.book.id })
+            }
+          }
+        })
+      : [{ label: '（暂无阅读记录）', enabled: false }]
+    return Menu.buildFromTemplate([
+      { label: '显示应用', click: () => onShow() },
       {
-        label: '显示应用',
+        label: '还原专注模式',
         click: () => {
           onShow()
+          send({ type: 'focus', bookId: s.lastBookId ?? undefined })
+        }
+      },
+      { type: 'separator' },
+      { label: '书籍切换', submenu: bookItems },
+      {
+        label: '设置…',
+        click: () => {
+          onShow()
+          send({ type: 'settings' })
         }
       },
       { type: 'separator' },
       { label: '退出', click: () => app.quit() }
     ])
-  )
+  }
+
+  // Windows：不设静态 contextMenu，改为 right-click 时弹出即时构建的菜单，保证书目动态。
+  tray.on('right-click', () => tray?.popUpContextMenu(buildMenu()))
   tray.on('click', () => {
     if (state === 'reading') onShow()
     else win.show() // 隐藏态点击仅唤出中性界面

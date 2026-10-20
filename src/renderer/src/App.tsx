@@ -97,10 +97,15 @@ function Shell(): ReactNode {
   // 卸载时确保取消置顶，避免残留
   useEffect(() => () => void window.reader.setAlwaysOnTop(false), [])
 
+  // 主题作用到 <html>：让 body（.app 的祖先）与中性遮盖屏都吃到主题变量，
+  // 深色/护眼时整窗（含正文页）一起变深，而非只变工具栏。
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', s.theme || 'light')
+  }, [s.theme])
+
   if (!s.settings) return <div className="loading">正在准备工作区…</div>
 
   if (s.privacyState !== 'reading') return <PrivacyScreen state={s.privacyState as 'neutral' | 'locked'} />
-
   return (
     <div
       className="app"

@@ -87,10 +87,45 @@ function stopFocusThrough(): void {
   applyThrough(false)
 }
 
+// 窗口几何持久化：专注悬浮层/普通窗移动或缩放后记住位置，重启时回到上次位置而非正中。
+interface Bounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+// 保存的位置必须仍落在某个显示器的范围内（换屏/拔副屏后不至于把窗口藏到看不见的坐标）
+function boundsOnScreen(b: Bounds): boolean {
+  return screen
+    .getAllDisplays()
+    .some((d) => {
+      const a = d.bounds
+      return b.x < a.x + a.width && b.x + b.width > a.x && b.y < a.y + a.height && b.y + b.height > a.y
+    })
+}
+
+function restoreBounds(): Partial<Electron.BrowserWindowConstructorOptions> {
+  const saved = loadSettings().windowBounds
+  if (saved && saved.width >= 480 && saved.height >= 420 && boundsOnScreen(saved)) {
+    return { x: saved.x, y: saved.y, width: saved.width, height: saved.height }
+  }
+  return { width: 1200, height: 800 }
+}
+
+let boundsTimer: ReturnType<typeof setTimeout> | null = null
+function persistBoundsSoon(): void {
+  if (boundsTimer) clearTimeout(boundsTimer)
+  boundsTimer = setTimeout(() => {
+    if (!win || win.isDestroyed() || win.isMinimized() || !win.isVisible()) return
+    const b = win.getBounds()
+    // 最大化时 getBounds 返回整屏，存下来重启会错位——忽略，仅记普通态几何
+    if (b.width >= 480 && b.height >= 420) saveSettings({ windowBounds: b })
+  }, 400)
+}
+
 function createWindow(): void {
   win = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    ...restoreBounds(),
     minWidth: 480,
     minHeight: 420,
     show: true,
@@ -112,6 +147,10 @@ function createWindow(): void {
     const st = loadSettings()
     if (st.hideOnBlur && getState() === 'reading' && win && !win.isDestroyed()) hideWindow(win)
   })
+
+  // 记住窗口位置/大小（含专注悬浮层被拖动后的落点）
+  win.on('moved', persistBoundsSoon)
+  win.on('resized', persistBoundsSoon)
 
   // 窗口关闭时清理专注穿透轮询，避免定时器泄漏
   win.on('closed', () => stopFocusThrough())

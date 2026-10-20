@@ -182,6 +182,9 @@ export interface AppSettings {
   // 状态
   privacyState: 'reading' | 'neutral' | 'locked'
   lastHiddenAt: number | null
+  lastBookId: number | null // 上次打开/阅读的书，重启时自动回到该书面板并恢复进度
+  // 窗口几何（含专注悬浮层移动后的位置），null 表示用默认居中
+  windowBounds: { x: number; y: number; width: number; height: number } | null
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -210,7 +213,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   readerWidth: 820,
   readerHeight: 100,
   privacyState: 'reading',
-  lastHiddenAt: null
+  lastHiddenAt: null,
+  lastBookId: null,
+  windowBounds: null
 }
 
 export interface SearchHit {

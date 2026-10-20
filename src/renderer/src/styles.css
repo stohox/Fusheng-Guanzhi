@@ -12,12 +12,14 @@
   --card: #ffffff;
   --danger: #b3493a;
 }
+html[data-theme='sepia'],
 .app[data-theme='sepia'] {
   --bg: #f3ead8;
   --fg: #3d3427;
   --line: #dccfb4;
   --card: #faf3e3;
 }
+html[data-theme='dark'],
 .app[data-theme='dark'] {
   --bg: #17181a;
   --fg: #d6d3cd;

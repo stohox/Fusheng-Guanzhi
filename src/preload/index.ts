@@ -104,7 +104,7 @@ const api = {
   ready: () => ipcRenderer.send('window:ready'),
 
   on: (channel: string, cb: (...args: unknown[]) => void): (() => void) => {
-    const allowed = ['privacy:state', 'privacy:focus-input', 'import:task']
+    const allowed = ['privacy:state', 'privacy:focus-input', 'import:task', 'tray:command']
     if (!allowed.includes(channel)) return () => undefined
     const listener = (_e: Electron.IpcRendererEvent, ...args: unknown[]): void => cb(...args)
     ipcRenderer.on(channel, listener)
