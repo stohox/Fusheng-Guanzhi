@@ -2,6 +2,7 @@ import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { useStore } from '../store'
 import type { Annotation, Bookmark, Chapter } from '../../../shared/types'
 import AiPanel from '../components/AiPanel'
+import { convertParas, convertText, nextScript, SCRIPT_LABEL, type ScriptMode } from '../script'
 
 export interface SelectionInfo {
   chapterIdx: number
@@ -34,15 +35,44 @@ export default function ReaderView({ bookId }: { bookId: number }): ReactNode {
   const restoredRef = useRef(false)
   const firstChapterDone = useRef(false)
   const pendingPos = useRef<'top' | 'bottom' | null>(null)
+  const [ready, setReady] = useState(false)
+  const initTargetRef = useRef<{ chapter: number; para: number; context: string } | null>(null)
 
-  // 加载书与目录
+  // 加载书与目录，并一次性解析「续读目标」（章节+段落+上下文）后再放行章节加载，
+  // 彻底消除「先按第 0 章预加载、再异步跳章」导致一次性恢复标志被提前消耗的竞态。
   useEffect(() => {
     restoredRef.current = false
     firstChapterDone.current = false
     pendingPos.current = null
-    window.reader.getBook(bookId).then(setBook as never)
-    window.reader.chapterMeta(bookId).then((m) => setMeta(m as never))
+    initTargetRef.current = null
+    setReady(false)
+    setChapter(null)
+    let cancelled = false
+    window.reader.getBook(bookId).then((b) => !cancelled && setBook(b as never))
+    window.reader.chapterMeta(bookId).then((m) => !cancelled && setMeta(m as never))
+    void (async () => {
+      const t = { chapter: 0, para: 0, context: '' }
+      if (s.currentAnchor) {
+        t.chapter = s.currentAnchor.chapterIdx
+        t.para = s.currentAnchor.paraIdx ?? 0
+      } else {
+        const p = await window.reader.getProgress(bookId)
+        if (p) {
+          const pp = p as never as { chapterIdx: number; paraIdx: number; context: string }
+          t.chapter = pp.chapterIdx
+          t.para = pp.paraIdx
+          t.context = pp.context || ''
+        }
+      }
+      if (cancelled) return
+      initTargetRef.current = t
+      setChapterIdx(t.chapter)
+      setReady(true)
+    })()
     refreshSide()
+    return () => {
+      cancelled = true
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId])
 
@@ -51,64 +81,41 @@ export default function ReaderView({ bookId }: { bookId: number }): ReactNode {
     setBookmarks((await window.reader.listBookmarks(bookId)) as never)
   }, [bookId])
 
-  // 进度恢复（内容版本+章节+段落+偏移+上下文，不以页码定位）
+  // 章节加载：仅在续读目标解析完成（ready）后放行，避免加载错章
   useEffect(() => {
-    const start = async (): Promise<void> => {
-      if (s.currentAnchor) {
-        setChapterIdx(s.currentAnchor.chapterIdx)
-        return
-      }
-      const p = await window.reader.getProgress(bookId)
-      if (p) setChapterIdx((p as never as { chapterIdx: number }).chapterIdx)
-    }
-    start()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookId, s.currentAnchor])
-
-  // 加载章节
-  useEffect(() => {
+    if (!ready) return
     window.reader.getChapter(bookId, chapterIdx).then((c) => {
       setChapter(c as never)
       setSelection(null)
       setToolbar(null)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookId, chapterIdx])
+  }, [bookId, chapterIdx, ready])
 
-  // 恢复段内位置
-  useEffect(() => {
-    if (!chapter || !bodyRef.current || restoredRef.current) return
-    restoredRef.current = true
-    const doRestore = async (): Promise<void> => {
-      let target = s.currentAnchor?.chapterIdx === chapterIdx ? s.currentAnchor.paraIdx : -1
-      if (target < 0) {
-        const p = await window.reader.getProgress(bookId)
-        if (p) {
-          const pp = p as never as { chapterIdx: number; paraIdx: number; context: string }
-          if (pp.chapterIdx === chapterIdx) {
-            target = pp.paraIdx
-            // 上下文片段校验：正文更新后锚点可能漂移
-            const txt = chapter.paragraphs[pp.paraIdx] ?? ''
-            if (pp.context && !txt.startsWith(pp.context)) {
-              const found = chapter.paragraphs.findIndex((x) => x.includes(pp.context))
-              if (found >= 0) target = found
-            }
-          }
-        }
-      }
-      if (target > 0) {
-        const el = bodyRef.current?.querySelector(`[data-pidx="${target}"]`)
-        el?.scrollIntoView({ block: 'start' })
-        setParaIdx(target)
-      } else if (bodyRef.current) bodyRef.current.scrollTop = 0
-    }
-    doRestore()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chapter, chapterIdx])
-
-  // 切章后的滚动定位：首章交给进度恢复，之后翻页/跳章默认置顶，跨回上一章则置底
+  // 章节内容就位后的滚动定位：
+  // 1) 命中「续读目标章」时做一次段落级精确回跳（用上下文片段校验正文更新后的锚点漂移）；
+  // 2) 其余章节切换沿用翻页语义——新章置顶、回到上一章置底。
   useEffect(() => {
     if (!chapter || !bodyRef.current) return
+    const t = initTargetRef.current
+    if (t && !restoredRef.current && t.chapter === chapterIdx) {
+      restoredRef.current = true
+      firstChapterDone.current = true
+      initTargetRef.current = null
+      let target = t.para
+      const txt = chapter.paragraphs[target] ?? ''
+      if (t.context && txt && !txt.startsWith(t.context)) {
+        const found = chapter.paragraphs.findIndex((x) => x.includes(t.context))
+        if (found >= 0) target = found
+      }
+      if (target > 0) {
+        bodyRef.current.querySelector(`[data-pidx="${target}"]`)?.scrollIntoView({ block: 'start' })
+        setParaIdx(target)
+      } else {
+        bodyRef.current.scrollTop = 0
+      }
+      return
+    }
     if (!firstChapterDone.current) {
       firstChapterDone.current = true
       pendingPos.current = null
@@ -120,7 +127,8 @@ export default function ReaderView({ bookId }: { bookId: number }): ReactNode {
       bodyRef.current.scrollTop = 0
     }
     pendingPos.current = null
-  }, [chapter])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chapter, chapterIdx])
 
   // 按屏翻一页：dir>0 下一页、dir<0 上一页；到章末自动进下一章（新章置顶）、章首自动回上一章（上一章置底）
   const turnPage = useCallback(
@@ -262,6 +270,10 @@ export default function ReaderView({ bookId }: { bookId: number }): ReactNode {
     return () => io.disconnect()
   }, [chapter, chapterIdx])
 
+  // 显示层简繁：正文仍以原始字符入库，仅渲染/选区按转换后的文本处理
+  const script: ScriptMode = s.settings?.readerScript ?? 'original'
+  const dispParas = useMemo(() => convertParas(chapter?.paragraphs ?? [], script), [chapter, script])
+
   // 选区 → 浮动工具条
   const onMouseUp = useCallback((): void => {
     const sel = window.getSelection()
@@ -278,7 +290,8 @@ export default function ReaderView({ bookId }: { bookId: number }): ReactNode {
     const pidx = Number(el.dataset.pidx)
     const text = sel.toString().trim()
     if (!text) return
-    const para = chapter?.paragraphs[pidx] ?? ''
+    // 偏移按「显示文本」计算：开启简繁转换后 DOM 里是转换后的字，与 dispParas 对齐
+    const para = dispParas[pidx] ?? ''
     // 跨段选择时 indexOf 找不到整串（含换行）会返回 -1，曾把偏移错误记为 0+len；
     // 找不到时保守锚定整段（0 ~ 段长），不产生错误区间。
     const found = para.indexOf(sel.toString())
@@ -292,10 +305,10 @@ export default function ReaderView({ bookId }: { bookId: number }): ReactNode {
       startOffset,
       endOffset,
       text,
-      prevContext: chapter?.paragraphs[pidx - 1] ?? '',
-      nextContext: chapter?.paragraphs[pidx + 1] ?? ''
+      prevContext: dispParas[pidx - 1] ?? '',
+      nextContext: dispParas[pidx + 1] ?? ''
     })
-  }, [chapter, chapterIdx])
+  }, [dispParas, chapterIdx])
 
   const annotationParas = useMemo(() => {
     const m = new Map<number, Annotation[]>()
@@ -359,6 +372,13 @@ export default function ReaderView({ bookId }: { bookId: number }): ReactNode {
             <option value="sepia">{stealth ? '柔和' : '护眼'}</option>
             <option value="dark">深色</option>
           </select>
+          <button
+            className={script === 'original' ? '' : 'on'}
+            onClick={() => s.updateSettings({ readerScript: nextScript(script) })}
+            title="简繁切换（仅改显示，正文原文与书签/批注/进度不受影响）：原文 → 简体 → 繁体"
+          >
+            {SCRIPT_LABEL[script]}
+          </button>
           <button onClick={() => s.updateSettings({ readerFontSize: Math.min(32, fontSize + 1) })}>A＋</button>
           <button onClick={() => s.updateSettings({ readerFontSize: Math.max(12, fontSize - 1) })}>A－</button>
           <button
@@ -388,8 +408,8 @@ export default function ReaderView({ bookId }: { bookId: number }): ReactNode {
             <div className="empty-state">正文无法解密读取（PIN 曾被重置，或本机安全存储环境变化）。可删除该书并从源文件重新导入。</div>
           ) : chapter ? (
             <>
-              {!stealth && <h3 className="chapter-title">{chapter.title}</h3>}
-              {chapter.paragraphs.map((p, i) => (
+              {!stealth && <h3 className="chapter-title">{convertText(chapter.title, script)}</h3>}
+              {dispParas.map((p, i) => (
                 <p
                   key={i}
                   data-pidx={i}

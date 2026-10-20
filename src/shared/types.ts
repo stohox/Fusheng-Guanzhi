@@ -175,6 +175,8 @@ export interface AppSettings {
   readerFontSize: number
   readerLineHeight: number
   readerFontFamily: string
+  // 显示层简繁转换：original=按原文；simplified=转简体；traditional=转繁体。正文仍以原始字符入库，仅渲染时转换
+  readerScript: 'original' | 'simplified' | 'traditional'
   readerWidth: number // 正文栏最大宽度（px），480~1100，可调阅读列宽
   readerHeight: number // 正文栏高度（占阅读区可用高度的百分比），30~100，专注态垂直居中
   // 状态
@@ -204,6 +206,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   readerFontSize: 18,
   readerLineHeight: 1.8,
   readerFontFamily: 'serif',
+  readerScript: 'original',
   readerWidth: 820,
   readerHeight: 100,
   privacyState: 'reading',

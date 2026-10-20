@@ -11,6 +11,7 @@ interface Store {
   openBook: (id: number, anchor?: { chapterIdx: number; paraIdx: number }) => void
   currentBookId: number | null
   currentAnchor: { chapterIdx: number; paraIdx: number } | null
+  navSeq: number
   books: Book[]
   libraries: Library[]
   tags: Tag[]
@@ -41,6 +42,7 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactNode 
   const [view, setView] = useState<View>('continue')
   const [currentBookId, setCurrentBookId] = useState<number | null>(null)
   const [currentAnchor, setCurrentAnchor] = useState<{ chapterIdx: number; paraIdx: number } | null>(null)
+  const [navSeq, setNavSeq] = useState(0)
   const [books, setBooks] = useState<Book[]>([])
   const [libraries, setLibraries] = useState<Library[]>([])
   const [tags, setTags] = useState<Tag[]>([])
@@ -96,6 +98,7 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactNode 
   const openBook = useCallback((id: number, anchor?: { chapterIdx: number; paraIdx: number }) => {
     setCurrentBookId(id)
     setCurrentAnchor(anchor ?? null)
+    setNavSeq((n) => n + 1)
     setView('reader')
   }, [])
 
@@ -143,6 +146,7 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactNode 
       openBook,
       currentBookId,
       currentAnchor,
+      navSeq,
       books,
       libraries,
       tags,
@@ -164,7 +168,7 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactNode 
       toggleQuick
     }),
     [
-      settings, privacyState, view, currentBookId, currentAnchor, books, libraries, tags,
+      settings, privacyState, view, currentBookId, currentAnchor, navSeq, books, libraries, tags,
       theme, quickOpen, refreshBooks, refreshLibraries, openBook, updateSettings,
       toggleStealth, toggleAlwaysOnTop, toggleTextColor, toggleQuick
     ]

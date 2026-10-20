@@ -45,7 +45,7 @@ export default function ContinueView(): ReactNode {
             <div
               key={r.book.id}
               className="recent-card"
-              onClick={() => s.openBook(r.book.id, { chapterIdx: r.chapterIdx, paraIdx: 0 })}
+              onClick={() => s.openBook(r.book.id)}
             >
               <div className="rc-title">{r.book.title}</div>
               <div className="rc-meta">

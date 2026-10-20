@@ -155,7 +155,7 @@ function Shell(): ReactNode {
         {s.view === 'library' && <LibraryView />}
         {s.view === 'import' && <ImportView />}
         {s.view === 'settings' && <SettingsView />}
-        {s.view === 'reader' && s.currentBookId && <ReaderView bookId={s.currentBookId} />}
+        {s.view === 'reader' && s.currentBookId && <ReaderView key={`${s.currentBookId}-${s.navSeq}`} bookId={s.currentBookId} />}
       </main>
       <QuickSettings />
     </div>

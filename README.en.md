@@ -69,7 +69,11 @@ nothing is moved automatically.
 
 **Library & reading.** *Library* browses everything by library/tag, with bulk move and delete (30-day trash).
 Open a book to enter the reader: a left TOC jumps between chapters; the body supports in-book search, font size / line height /
-typeface / three themes, bookmarks, and highlights (bound to chapter + paragraph + offset). Reading progress is saved locally every 5 seconds.
+typeface / three themes, bookmarks, and highlights (bound to chapter + paragraph + offset). A toolbar "Original / Simplified / Traditional"
+button toggles the display script — a **render-time** conversion only, so stored text, bookmarks, notes, search and progress are all unaffected
+(classical Traditional texts can be read instantly in Simplified, and vice versa). Reading progress is saved locally every 5 seconds; reopening
+a book — from "Continue reading" or the "Library" — returns precisely to the last chapter *and* paragraph, re-anchored by a context snippet so it
+stays accurate across font/line-size changes and text updates.
 
 **AI passage help.** Select a passage in the reader and the right AI panel translates / explains / answers questions.
 By default it sends the selection plus the two adjacent paragraphs (≤ 3000 chars) to the model; results are labeled "AI-assisted content"
@@ -108,7 +112,7 @@ Press `Esc` twice to hide to the tray.
 | 4.3 Preview & dedup | Edit title/author/language/library/tags before storing; show chapters & completeness; fingerprint dedup |
 | LB01/02 Library & tags | Multi-library multi-tag (single body), all/uncategorized views, bulk move/delete, 30-day trash |
 | LB03/04 Classification | Priority manual→rules→keyword suggestion; reason & confidence, human-confirmed; re-analyzable |
-| RD01/02 Reader | TOC, chapter switching, in-book search, font/line/type/three themes, bookmarks, highlights; progress saved every 5s |
+| RD01/02 Reader | TOC, chapter switching, in-book search, font/line/type/three themes, Simplified/Traditional display toggle, bookmarks, highlights; progress saved every 5s, precise resume to chapter+paragraph |
 | 6.1 Position anchors | chapter + paragraph + char offset + context snippet, works across font sizes; re-matched on text updates |
 | PR01-03 Privacy | Global hide shortcut; cover-then-neutral; hide-on-blur/idle; lock-on-hide (scrypt PIN); persists covered across restart; neutral tray text |
 | DP01 Encryption | Private-library text AES-256-GCM at rest, master key protected by Windows DPAPI (safeStorage); API key encrypted too |
