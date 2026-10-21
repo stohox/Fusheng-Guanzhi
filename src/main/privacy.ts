@@ -166,11 +166,27 @@ export function createTray(win: BrowserWindow, onShow: () => void): void {
   tray = new Tray(img)
   tray.setToolTip(loadSettings().neutralTitle || '阅读器') // 通用文案，不含书名
 
-  const send = (cmd: { type: string; bookId?: number }): void => {
+  const send = (cmd: { type: string; bookId?: number; delta?: number }): void => {
     if (!win.isDestroyed()) win.webContents.send('tray:command', cmd)
   }
 
-  // 构建托盘右键菜单：显示 / 还原专注模式 / 书籍切换（最近阅读）/ 设置 / 退出。
+  // 把窗口从隐藏 / 中性伪装 / 锁定态带回「阅读」态：
+  // 已是阅读态直接显示；否则走 revealWindow（无 PIN 立即恢复，有 PIN 唤出解锁界面）。
+  // 之前只 win.show() 不切状态，导致「还原专注模式」在隐藏后只是露出伪装界面、看着没反应。
+  const bringBack = (): void => {
+    if (win.isDestroyed()) return
+    if (state === 'reading') {
+      onShow()
+      return
+    }
+    const r = revealWindow(win, '')
+    if (!r.ok) {
+      win.show()
+      win.focus() // 需要 PIN：把解锁界面呈现出来，由用户输入
+    }
+  }
+
+  // 构建托盘右键菜单：显示 / 还原专注模式 / 章节切换 / 书籍切换（最近阅读）/ 设置 / 退出。
   // 书籍切换列表实时取最近的阅读进度，右键弹出前重建，保证切换后菜单跟得上。
   const buildMenu = (): Menu => {
     const s = loadSettings()
@@ -181,19 +197,34 @@ export function createTray(win: BrowserWindow, onShow: () => void): void {
           return {
             label: t.length > 30 ? `${t.slice(0, 30)}…` : t,
             click: () => {
-              onShow()
+              bringBack()
               send({ type: 'open', bookId: r.book.id })
             }
           }
         })
       : [{ label: '（暂无阅读记录）', enabled: false }]
     return Menu.buildFromTemplate([
-      { label: '显示应用', click: () => onShow() },
+      { label: '显示应用', click: () => bringBack() },
       {
         label: '还原专注模式',
         click: () => {
-          onShow()
+          bringBack()
           send({ type: 'focus', bookId: s.lastBookId ?? undefined })
+        }
+      },
+      { type: 'separator' },
+      {
+        label: '◀ 上一章',
+        click: () => {
+          bringBack()
+          send({ type: 'chapter', delta: -1 })
+        }
+      },
+      {
+        label: '下一章 ▶',
+        click: () => {
+          bringBack()
+          send({ type: 'chapter', delta: 1 })
         }
       },
       { type: 'separator' },
@@ -201,7 +232,7 @@ export function createTray(win: BrowserWindow, onShow: () => void): void {
       {
         label: '设置…',
         click: () => {
-          onShow()
+          bringBack()
           send({ type: 'settings' })
         }
       },
@@ -214,7 +245,7 @@ export function createTray(win: BrowserWindow, onShow: () => void): void {
   tray.on('right-click', () => tray?.popUpContextMenu(buildMenu()))
   tray.on('click', () => {
     if (state === 'reading') onShow()
-    else win.show() // 隐藏态点击仅唤出中性界面
+    else win.show() // 左键仅快速唤出（伪装态保持伪装，不打扰解锁流程）
   })
 }
 

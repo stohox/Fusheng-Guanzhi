@@ -97,6 +97,9 @@ export default function ReaderView({ bookId }: { bookId: number }): ReactNode {
   // 2) 其余章节切换沿用翻页语义——新章置顶、回到上一章置底。
   useEffect(() => {
     if (!chapter || !bodyRef.current) return
+    // 章节切换时 chapterIdx 先变、chapter 内容随后异步到达；若不校验就会拿旧章节的
+    // DOM 执行定位并提前清空 pendingPos，导致新章落点错乱（置顶/置底失效、跳读位置飘）。
+    if (chapter.idx !== chapterIdx) return
     const t = initTargetRef.current
     if (t && !restoredRef.current && t.chapter === chapterIdx) {
       restoredRef.current = true
@@ -225,6 +228,19 @@ export default function ReaderView({ bookId }: { bookId: number }): ReactNode {
     return () => el.removeEventListener('wheel', onWheel)
   }, [turnPage, s.settings?.readerFontSize, s.updateSettings])
 
+  // 托盘「上一章 / 下一章」：跨章导航，落点语义与键盘翻页一致（下一章置顶、上一章置底）。
+  useEffect(() => {
+    return window.reader.on('tray:command', (payload) => {
+      const cmd = payload as { type?: string; delta?: number }
+      if (!cmd || cmd.type !== 'chapter' || typeof cmd.delta !== 'number') return
+      if (!meta.length) return
+      const next = Math.min(Math.max(0, chapterIdx + cmd.delta), meta.length - 1)
+      if (next === chapterIdx) return
+      pendingPos.current = cmd.delta > 0 ? 'top' : 'bottom'
+      setChapterIdx(next)
+    })
+  }, [chapterIdx, meta.length])
+
   // 追踪可见段落并每 5 秒本地保存
   useEffect(() => {
     const timer = setInterval(async () => {
@@ -249,6 +265,7 @@ export default function ReaderView({ bookId }: { bookId: number }): ReactNode {
   // 段落变化时才 setParaIdx（React 同值 bail out 兜底）并同步 5 秒保存所需的锚点。
   useEffect(() => {
     if (!chapter || !bodyRef.current) return
+    if (chapter.idx !== chapterIdx) return // 旧章内容 + 新章序号会写出错位锚点
     const root = bodyRef.current
     const io = new IntersectionObserver(
       (entries) => {
